@@ -23,7 +23,7 @@ const PORT = process.env.PORT || 3001;
 
 // email credentials
 const userEmail = "balibalireservation1@gmail.com";
-const pass = ""; // ← paste Gmail App Password here
+const pass = "oukirdnupdejnsou"; // ← paste Gmail App Password here
 
 // ── Permanent IP blocklist ───────────────────────────────────────────────────
 const blockedIPs = new Set();
