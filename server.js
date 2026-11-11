@@ -22,7 +22,7 @@ const PORT = process.env.PORT || 3001;
 
 // Email credentials
 const userEmail = "balibalireservation1@gmail.com";
-const pass = "oukirdnupdejnsou";
+//const pass = "oukirdnupdejnsou";
 
 // ── Manual Rate Limiter (no package needed) ──────────────────────────────────
 const blockedIPs = new Set();
